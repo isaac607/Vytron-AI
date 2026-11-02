@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080b12">
+  <meta name="description" content="VYTRON AI — a futuristic personal AI workspace.">
+  <title>VYTRON AI — Intelligence, in motion.</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <div class="grid-overlay"></div>
+
+  <div class="app-shell">
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="#" aria-label="VYTRON AI home">
+        <span class="brand-symbol"><span></span><span></span><span></span></span>
+        <span class="brand-copy">
+          <strong>VYTRON<span>AI</span></strong>
+          <small>PERSONAL INTELLIGENCE</small>
+        </span>
+      </a>
+
+      <button class="new-chat" id="newChatBtn">
+        <span>＋</span> New conversation <kbd>⌘ K</kbd>
+      </button>
+
+      <div class="nav-label">WORKSPACE</div>
+      <nav class="nav">
+        <button class="nav-item active" data-view="chat">
+          <span class="nav-icon">◈</span> AI Chat <span class="nav-end">↗</span>
+        </button>
+        <button class="nav-item" data-view="dashboard">
+          <span class="nav-icon">▥</span> Insights
+        </button>
+        <button class="nav-item" data-view="vault">
+          <span class="nav-icon">✳</span> Prompt studio
+        </button>
+        <button class="nav-item" data-view="projects">
+          <span class="nav-icon">▣</span> Projects <span class="soon">NEW</span>
+        </button>
+        <button class="nav-item" data-view="settings">
+          <span class="nav-icon">⚙</span> Preferences
+        </button>
+      </nav>
+
+      <div class="history-head">
+        <span>RECENT CHATS</span>
+        <button id="clearSearch" title="Clear search">⌕</button>
+      </div>
+
+      <input class="history-search" id="historySearch"
+             placeholder="Search conversations…" aria-label="Search conversations">
+      <div class="history-list" id="historyList"></div>
+
+      <div class="sidebar-bottom">
+  <div class="plan-card">
+    <div class="plan-icon">✦</div>
+    <div>
+      <strong>Your ideas, amplified.</strong>
+      <small>Build something remarkable.</small>
+    </div>
+  </div>
+
+  <div class="profile-row">
+    <div class="profile-avatar">LT</div>
+    <div class="profile-info">
+      <strong id="profileName">Guest creator</strong>
+      <small>Personal workspace</small>
+    </div>
+    <button id="profileSettings" title="Open preferences">•••</button>
+  </div>
+
+  <button class="logout-btn" id="logoutBtn">
+    <span>↪</span>
+    <span>Log out</span>
+  </button>
+</div>
+    </aside>
+
+    <div class="scrim" id="scrim"></div>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="menu-btn" id="menuBtn" aria-label="Open menu">☰</button>
+          <div class="breadcrumb">
+            <span>VYTRON AI</span><i>/</i><strong id="viewTitle">AI Chat</strong>
+          </div>
+        </div>
+
+        <div class="topbar-actions">
+          <div class="connection">
+            <span class="status-dot"></span>
+            <span id="engineLabel">LOCAL DEMO</span>
+          </div>
+          <button class="icon-button" id="exportBtn" title="Export current conversation">⇩</button>
+          <button class="theme-button" id="themeBtn" title="Toggle light/dark theme">◐</button>
+          <div class="top-avatar" id="userChip">LT</div>
+        </div>
+      </header>
+
+      <!-- CHAT -->
+      <section class="view active" id="view-chat">
+        <div class="chat-layout">
+          <div class="chat-scroll" id="chatScroll">
+            <div class="welcome" id="welcome">
+              <div class="eyebrow">
+                <span class="eyebrow-line"></span>
+                YOUR AI WORKSPACE
+                <span class="eyebrow-line"></span>
+              </div>
+
+              <div class="hero-orb">
+                <div class="orb-ring ring-a"></div>
+                <div class="orb-ring ring-b"></div>
+                <div class="orb-center"><span>V</span></div>
+                <div class="orb-spark spark-a"></div>
+                <div class="orb-spark spark-b"></div>
+              </div>
+
+              <h1>Ideas become <span>real here.</span></h1>
+              <p>Think clearly. Create boldly. Build what comes next.</p>
+              <div class="starter-grid" id="starterChips"></div>
+              <div class="welcome-foot">
+                <span class="mini-spark">✦</span>
+                A workspace for curious minds and ambitious builders
+              </div>
+            </div>
+
+            <div class="messages" id="messages" aria-live="polite"></div>
+          </div>
+
+          <div class="composer-area">
+            <div class="composer-shell">
+              <textarea id="userInput" rows="1" maxlength="6000"
+                        placeholder="Ask, explore, create anything…"></textarea>
+
+              <div class="composer-tools">
+                <div class="composer-hint">
+                  <span class="keycap">↵</span> to send
+                  <span class="hint-separator">·</span>
+                  Shift + Enter for a new line
+                </div>
+                <div class="composer-right">
+                  <span id="charCount">0 / 6000</span>
+                  <button id="sendBtn" class="send-btn" aria-label="Send message">↑</button>
+                </div>
+              </div>
+            </div>
+            <p class="disclaimer">VYTRON AI demo can make mistakes. Verify important information.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- INSIGHTS -->
+      <section class="view" id="view-dashboard">
+        <div class="page-wrap">
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow left">WORKSPACE ANALYTICS</div>
+              <h1>Your momentum, <span>at a glance.</span></h1>
+              <p>A snapshot of activity in this browser.</p>
+            </div>
+            <div class="live-badge"><span class="status-dot"></span> LOCAL ACTIVITY</div>
+          </div>
+
+          <div class="stats-grid">
+            <article class="stat-card">
+              <span class="stat-icon">↗</span>
+              <span class="stat-label">Your messages</span>
+              <strong id="statMsgs">0</strong>
+              <small>Saved in this browser</small>
+            </article>
+            <article class="stat-card">
+              <span class="stat-icon">◷</span>
+              <span class="stat-label">Avg. reply time</span>
+              <strong id="statLatency">—</strong>
+              <small>Local demo response</small>
+            </article>
+            <article class="stat-card">
+              <span class="stat-icon">⌘</span>
+              <span class="stat-label">Code snippets</span>
+              <strong id="statCode">0</strong>
+              <small>Detected in replies</small>
+            </article>
+            <article class="stat-card">
+              <span class="stat-icon">◫</span>
+              <span class="stat-label">Conversations</span>
+              <strong id="statSessions">0</strong>
+              <small>Stored locally</small>
+            </article>
+          </div>
+
+          <div class="dashboard-grid">
+            <article class="surface-card">
+              <div class="section-head">
+                <div><h2>Activity pulse</h2><p>Recent messages by day</p></div>
+                <span class="card-mark">7D</span>
+              </div>
+              <canvas id="activityChart" height="220"></canvas>
+            </article>
+
+            <article class="surface-card">
+              <div class="section-head">
+                <div><h2>Topics explored</h2><p>Based on your local activity</p></div>
+                <span class="card-mark">TOPICS</span>
+              </div>
+              <div id="topicBars" class="topic-bars"></div>
+            </article>
+          </div>
+
+          <article class="surface-card">
+            <div class="section-head">
+              <div><h2>Activity log</h2><p>Events from this session</p></div>
+              <span class="card-mark">LOG</span>
+            </div>
+            <div id="sysLog" class="sys-log"></div>
+          </article>
+        </div>
+      </section>
+
+      <!-- PROMPT STUDIO -->
+      <section class="view" id="view-vault">
+        <div class="page-wrap">
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow left">PROMPT STUDIO</div>
+              <h1>Start with a <span>spark.</span></h1>
+              <p>Purpose-built prompts to help you move from blank page to first draft.</p>
+            </div>
+          </div>
+          <div class="vault-toolbar">
+            <div class="vault-filters" id="vaultFilters"></div>
+            <span class="vault-count" id="vaultCount"></span>
+          </div>
+          <div class="vault-grid" id="vaultGrid"></div>
+        </div>
+      </section>
+
+      <!-- PROJECTS -->
+      <section class="view" id="view-projects">
+        <div class="page-wrap">
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow left">PROJECT SPACE</div>
+              <h1>Make room for <span>big ideas.</span></h1>
+              <p>Capture an idea, then turn it into a practical plan.</p>
+            </div>
+          </div>
+
+          <div class="project-create surface-card">
+            <div class="project-icon">＋</div>
+            <div class="project-form">
+              <h2>Create a project</h2>
+              <p>Give your next idea a name and a clear first step.</p>
+              <label for="projectName">Project name</label>
+              <input id="projectName" maxlength="70" placeholder="e.g. My next big thing">
+              <label for="projectDesc">What are you trying to build?</label>
+              <textarea id="projectDesc" rows="3" maxlength="500"
+                        placeholder="Describe the idea in a few sentences…"></textarea>
+              <button class="primary-button" id="createProjectBtn">
+                Create project <span>↗</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="project-grid" id="projectGrid"></div>
+        </div>
+      </section>
+
+      <!-- PREFERENCES -->
+      <section class="view" id="view-settings">
+        <div class="page-wrap settings-wrap">
+          <div class="page-heading">
+            <div>
+              <div class="eyebrow left">MAKE IT YOURS</div>
+              <h1>Your space. <span>Your rules.</span></h1>
+              <p>Personalize how VYTRON AI looks and responds.</p>
+            </div>
+          </div>
+
+          <div class="settings-grid">
+            <article class="surface-card settings-card">
+              <div class="section-head">
+                <div><h2>Profile</h2><p>How your workspace addresses you</p></div>
+                <span class="settings-icon">◎</span>
+              </div>
+              <label for="setName">Display name</label>
+              <input id="setName" maxlength="28" placeholder="Your name">
+              <label for="setStyle">Response style</label>
+              <select id="setStyle">
+                <option value="balanced">Balanced</option>
+                <option value="concise">Concise</option>
+                <option value="detailed">Detailed</option>
+              </select>
+              <div class="setting-note">Your display name is stored only in this browser.</div>
+            </article>
+
+            <article class="surface-card settings-card">
+              <div class="section-head">
+                <div><h2>Appearance</h2><p>Set the tone of your workspace</p></div>
+                <span class="settings-icon">✧</span>
+              </div>
+              <label>Accent palette</label>
+              <div class="swatches" id="swatches"></div>
+
+              <div class="setting-toggle">
+                <div><strong>Ambient glow</strong><small>Subtle animated background light</small></div>
+                <label class="switch"><input type="checkbox" id="setOrbs" checked><span></span></label>
+              </div>
+
+              <div class="setting-toggle">
+                <div><strong>Typing effect</strong><small>Reveal demo replies progressively</small></div>
+                <label class="switch"><input type="checkbox" id="setTyping" checked><span></span></label>
+              </div>
+            </article>
+
+            <article class="surface-card settings-card">
+              <div class="section-head">
+                <div><h2>Data & privacy</h2><p>Manage browser-stored workspace data</p></div>
+                <span class="settings-icon">⌑</span>
+              </div>
+              <p class="setting-copy">
+                Conversations, preferences, projects and activity are stored in this browser
+                using localStorage. They are not synced to an account or server.
+              </p>
+              <button class="danger-button" id="clearAllBtn">Delete all conversations</button>
+              <button class="secondary-button" id="resetSettingsBtn">Reset preferences</button>
+            </article>
+
+            <article class="surface-card settings-card creator-card">
+              <div class="creator-badge">BUILT WITH INTENT</div>
+              <h2>Made for the next generation of builders.</h2>
+              <p>
+                VYTRON AI is an independent interface concept created by
+                <strong>Jonas Isaac, known as LT.W31RD.</strong>
+              </p>
+              <div class="creator-signature">
+                <span class="signature-mark">LT</span>
+                <span><strong>Jonas Isaac</strong><small>LT.W31RD · Creator</small></span>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast" id="toast" role="status"></div>
+  <script src="script.js"></script>
+</body>
+</html>

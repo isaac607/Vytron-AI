@@ -1,0 +1,18 @@
+.env
+node_modules/
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Database and user data
+users.db
+users.db-shm
+users.db-wal
+*.db
+*.db-shm
+*.db-wal
+
+# Dependencies and system files
+node_modules/
+.DS_Store

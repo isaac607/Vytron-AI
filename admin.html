@@ -1,0 +1,483 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#090b14">
+  <title>VYTRON AI — Admin Command Center</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/admin.css">
+  <script src="/admin.js" defer></script>
+</head>
+
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+
+  <div class="app-shell">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <a class="brand" href="/admin.html">
+        <span class="brand-mark">V</span>
+        <span>
+          <b>VYTRON</b>
+          <small>ADMIN COMMAND</small>
+        </span>
+      </a>
+
+      <div class="workspace-label">WORKSPACE</div>
+
+      <nav class="nav">
+        <button class="nav-link active" data-view="overview">
+          <span>◫</span> Overview
+        </button>
+
+        <button class="nav-link" data-view="users">
+          <span>♙</span> User management
+        </button>
+
+        <button class="nav-link" id="adminsNav" data-view="admins">
+          <span>♧</span> Administrators
+        </button>
+
+        <button class="nav-link" data-view="security">
+          <span>⌑</span> Security &amp; audit
+        </button>
+
+        <button class="nav-link" data-view="chat">
+          <span>✧</span> VYTRON AI Chat
+        </button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="system-card">
+          <span class="pulse"></span>
+          <div>
+            <b>Command center</b>
+            <small>Administrative workspace</small>
+          </div>
+        </div>
+
+        <a class="back-link" href="/">← Back to platform</a>
+      </div>
+    </aside>
+
+    <!-- MAIN -->
+    <main class="main">
+
+      <!-- TOPBAR -->
+      <header class="topbar">
+        <button class="mobile-menu" id="menuBtn" aria-label="Open menu">☰</button>
+
+        <div class="topbar-heading">
+          <div class="eyebrow">VYTRON CONTROL SYSTEM</div>
+          <div class="page-heading" id="pageHeading">Overview</div>
+        </div>
+
+        <div class="top-actions">
+          <span class="live-pill"><i></i> SYSTEM ONLINE</span>
+
+          <div class="profile">
+            <div class="avatar" id="avatar">V</div>
+            <div>
+              <b id="adminName">Administrator</b>
+              <small id="adminRole">Admin</small>
+            </div>
+          </div>
+
+          <button class="icon-button" id="logoutBtn" title="Log out" aria-label="Log out">↗</button>
+        </div>
+      </header>
+
+      <div class="content">
+
+        <div class="notice" id="notice" role="status"></div>
+
+        <!-- OVERVIEW -->
+        <section class="view active" id="view-overview">
+          <div class="welcome-row">
+            <div>
+              <div class="eyebrow">ADMINISTRATION</div>
+              <h1>Command center.</h1>
+              <p class="muted">Monitor your platform and manage your workspace.</p>
+            </div>
+
+            <button class="primary-btn" id="refreshBtn">↻ Refresh data</button>
+          </div>
+
+          <div class="stats-grid">
+            <article class="stat-card">
+              <div class="stat-top">
+                Total users
+                <span class="stat-icon violet">♙</span>
+              </div>
+              <strong id="totalUsers">—</strong>
+              <small>Registered platform accounts</small>
+            </article>
+
+            <article class="stat-card">
+              <div class="stat-top">
+                Active users
+                <span class="stat-icon green">●</span>
+              </div>
+              <strong id="activeUsers">—</strong>
+              <small>Accounts currently active</small>
+            </article>
+
+            <article class="stat-card">
+              <div class="stat-top">
+                Administrators
+                <span class="stat-icon blue">♧</span>
+              </div>
+              <strong id="adminCount">—</strong>
+              <small>Admin and Super Admin accounts</small>
+            </article>
+
+            <article class="stat-card">
+              <div class="stat-top">
+                Active sessions
+                <span class="stat-icon amber">◉</span>
+              </div>
+              <strong id="activeSessions">—</strong>
+              <small>Current platform sessions</small>
+            </article>
+          </div>
+
+          <div class="dashboard-grid">
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Platform health</h2>
+                  <p>Configuration status</p>
+                </div>
+                <span class="subtle-tag">SYSTEM</span>
+              </div>
+
+              <div class="health-list">
+                <div>
+                  <span><i class="health-dot" id="aiDot"></i>AI service</span>
+                  <b id="aiStatus">Checking...</b>
+                </div>
+                <div>
+                  <span><i class="health-dot" id="emailDot"></i>Email service</span>
+                  <b id="emailStatus">Checking...</b>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-head">
+                <div>
+                  <h2>Quick actions</h2>
+                  <p>Navigate your command center</p>
+                </div>
+              </div>
+
+              <div class="quick-actions">
+                <button data-goto="users">
+                  <span>♙</span>
+                  <div><b>Manage users</b><small>View and manage accounts</small></div>
+                  <i>→</i>
+                </button>
+
+                <button data-goto="admins" id="quickAdmins">
+                  <span>♧</span>
+                  <div><b>Administrators</b><small>Review admin accounts</small></div>
+                  <i>→</i>
+                </button>
+
+                <button data-goto="security">
+                  <span>⌑</span>
+                  <div><b>Security audit</b><small>Review platform activity</small></div>
+                  <i>→</i>
+                </button>
+
+                <button data-goto="chat">
+                  <span>✧</span>
+                  <div><b>Ask VYTRON AI</b><small>Open your AI workspace</small></div>
+                  <i>→</i>
+                </button>
+              </div>
+            </section>
+          </div>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Recent accounts</h2>
+                <p>Latest registered platform users</p>
+              </div>
+              <button class="text-btn" data-goto="users">View all →</button>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>USER</th>
+                    <th>ROLE</th>
+                    <th>STATUS</th>
+                    <th>JOINED</th>
+                  </tr>
+                </thead>
+                <tbody id="recentUsers">
+                  <tr><td colspan="4" class="empty">Loading accounts...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- USER MANAGEMENT -->
+        <section class="view" id="view-users">
+          <div class="section-intro">
+            <div>
+              <h2>User management</h2>
+              <p>Search accounts and manage user access.</p>
+            </div>
+
+            <label class="search-box">
+              <span>⌕</span>
+              <input id="userSearch" type="search" placeholder="Search users...">
+            </label>
+          </div>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Platform accounts</h2>
+                <p>Registered users and account permissions</p>
+              </div>
+              <span class="subtle-tag">ACCOUNTS</span>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>USER</th>
+                    <th>EMAIL</th>
+                    <th>ROLE</th>
+                    <th>STATUS</th>
+                    <th>JOINED</th>
+                    <th>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody id="usersTable">
+                  <tr><td colspan="6" class="empty">Loading users...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- ADMINISTRATORS -->
+        <section class="view" id="view-admins">
+          <div class="section-intro">
+            <div>
+              <h2>Administrators</h2>
+              <p>Review accounts with elevated platform permissions.</p>
+            </div>
+          </div>
+
+          <div class="role-grid">
+            <article class="role-card creator-card">
+              <span class="role-symbol">✦</span>
+              <h3>Creator</h3>
+              <p>Highest-level platform authority with full administrative control.</p>
+            </article>
+
+            <article class="role-card">
+              <span class="role-symbol">♛</span>
+              <h3>Super Admin</h3>
+              <p>Can appoint standard administrators and manage platform accounts.</p>
+            </article>
+
+            <article class="role-card">
+              <span class="role-symbol">♧</span>
+              <h3>Admin</h3>
+              <p>Can manage ordinary user accounts and review platform activity.</p>
+            </article>
+          </div>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Admin team</h2>
+                <p>Current administrators</p>
+              </div>
+              <span class="subtle-tag">TEAM</span>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ADMINISTRATOR</th>
+                    <th>ROLE</th>
+                    <th>STATUS</th>
+                    <th>JOINED</th>
+                    <th>ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody id="adminsTable">
+                  <tr><td colspan="5" class="empty">Loading administrators...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <p class="permission-note" id="roleNote">
+            Role assignment is restricted according to your administrator permissions.
+          </p>
+        </section>
+
+        <!-- SECURITY & AUDIT -->
+        <section class="view" id="view-security">
+          <div class="section-intro">
+            <div>
+              <h2>Security &amp; audit</h2>
+              <p>Review administrative actions recorded by the platform.</p>
+            </div>
+          </div>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Activity log</h2>
+                <p>Recorded administrative events</p>
+              </div>
+              <span class="subtle-tag">AUDIT LOG</span>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ACTION</th>
+                    <th>ACTOR</th>
+                    <th>TARGET</th>
+                    <th>DETAILS</th>
+                    <th>DATE</th>
+                  </tr>
+                </thead>
+                <tbody id="auditTable">
+                  <tr><td colspan="5" class="empty">Loading activity...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- VYTRON AI CHAT -->
+        <section class="view" id="view-chat">
+          <div class="admin-vytron-chat">
+
+            <div class="vytron-chat-top">
+              <div class="vytron-chat-identity">
+                <div class="vytron-mini-orb">✦</div>
+                <div>
+                  <h2>VYTRON AI</h2>
+                  <p><span class="online-dot"></span> AI workspace · Ready to assist</p>
+                </div>
+              </div>
+
+              <button class="chat-clear-btn" id="adminChatClear">↺ New chat</button>
+            </div>
+
+            <div class="vytron-chat-scroll" id="adminChatMessages">
+              <div class="vytron-welcome" id="adminChatWelcome">
+                <div class="vytron-hero-orb">
+                  <div class="vytron-orb-ring ring-one"></div>
+                  <div class="vytron-orb-ring ring-two"></div>
+                  <div class="vytron-orb-core">✦</div>
+                </div>
+
+                <span class="chat-eyebrow">YOUR AI WORKSPACE</span>
+                <h1>Ideas become <span>real here.</span></h1>
+                <p>Think clearly. Create boldly. Build what comes next.</p>
+
+                <div class="admin-starter-grid">
+                  <button class="admin-starter" data-prompt="Explain how VYTRON AI works.">
+                    <span>✧</span>
+                    <b>Explore VYTRON</b>
+                    <small>Understand your AI assistant</small>
+                  </button>
+
+                  <button class="admin-starter" data-prompt="Help me analyze my platform's performance and suggest improvements.">
+                    <span>◈</span>
+                    <b>Analyze my platform</b>
+                    <small>Discover useful improvements</small>
+                  </button>
+
+                  <button class="admin-starter" data-prompt="Help me write clean and efficient JavaScript code.">
+                    <span>⌘</span>
+                    <b>Write some code</b>
+                    <small>Build something useful</small>
+                  </button>
+
+                  <button class="admin-starter" data-prompt="Give me five creative ideas for improving an educational platform.">
+                    <span>✦</span>
+                    <b>Brainstorm ideas</b>
+                    <small>Turn ideas into possibilities</small>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="admin-composer-area">
+              <div class="admin-composer-shell">
+                <textarea
+                  id="adminChatInput"
+                  rows="1"
+                  maxlength="6000"
+                  placeholder="Ask, explore, create anything..."
+                ></textarea>
+
+                <div class="admin-composer-tools">
+                  <span class="admin-composer-hint">VYTRON AI <span>·</span> Your intelligent workspace</span>
+
+                  <div class="admin-composer-right">
+                    <span id="adminChatCount">0 / 6000</span>
+                    <button id="adminChatSend" class="admin-send-btn" aria-label="Send message">↑</button>
+                  </div>
+                </div>
+              </div>
+
+              <p class="admin-chat-disclaimer" id="adminChatStatus">
+                VYTRON AI can make mistakes. Verify important information.
+              </p>
+            </div>
+
+          </div>
+        </section>
+
+        <footer>
+          VYTRON AI <span>✦</span> ADMIN COMMAND CENTER
+        </footer>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- CONFIRMATION MODAL -->
+  <div class="modal-backdrop" id="confirmModal">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-icon">!</div>
+      <h2 id="modalTitle">Confirm action</h2>
+      <p id="modalText">Are you sure you want to continue?</p>
+
+      <div class="modal-actions">
+        <button class="secondary-btn" id="cancelAction">Cancel</button>
+        <button class="danger-btn" id="confirmAction">Confirm</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

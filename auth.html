@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#080b14">
+  <meta name="description" content="Sign in or create your VYTRON AI account.">
+  <title>VYTRON AI — Your Intelligence, Elevated</title>
+  <link rel="stylesheet" href="/auth.css">
+  <script src="/auth.js" defer></script>
+</head>
+<body>
+  <div class="ambient ambient-one"></div>
+  <div class="ambient ambient-two"></div>
+  <div class="grid-overlay"></div>
+
+  <main class="auth-layout">
+    <section class="brand-panel">
+      <a class="brand" href="/auth.html" aria-label="VYTRON AI home">
+        <span class="brand-symbol">V</span>
+        <span>VYTRON<span class="brand-light"> AI</span></span>
+      </a>
+
+      <div class="brand-content">
+        <div class="eyebrow">
+          <span class="status-dot"></span>
+          INTELLIGENCE, REIMAGINED
+        </div>
+
+        <h1>Your ideas.<br>Without <span>limits.</span></h1>
+
+        <p class="brand-description">
+          Enter a smarter workspace for thinking, creating, learning,
+          and turning ambitious ideas into reality.
+        </p>
+
+        <div class="feature-list">
+          <div class="feature">
+            <span class="feature-icon">✳</span>
+            <div>
+              <strong>Intelligent conversations</strong>
+              <p>Keep exploring ideas with contextual AI.</p>
+            </div>
+          </div>
+
+          <div class="feature">
+            <span class="feature-icon">⌘</span>
+            <div>
+              <strong>Built for your workflow</strong>
+              <p>From coding to creativity, all in one place.</p>
+            </div>
+          </div>
+
+          <div class="feature">
+            <span class="feature-icon">◇</span>
+            <div>
+              <strong>Your account, your space</strong>
+              <p>Sign in to access your personal workspace.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="brand-footer">
+        <span>VYTRON AI</span>
+        <span>THINK BEYOND ORDINARY</span>
+      </div>
+    </section>
+
+    <section class="form-panel">
+      <div class="mobile-brand">
+        <span class="brand-symbol">V</span>
+        <span>VYTRON<span class="brand-light"> AI</span></span>
+      </div>
+
+      <div class="auth-card">
+        <div class="card-topline">
+          <span class="security-icon">◇</span>
+          <span>SECURE ACCESS</span>
+        </div>
+
+        <div id="authViews">
+          <!-- Sign in -->
+          <section class="auth-view active" id="loginView">
+            <p class="section-label">WELCOME BACK</p>
+            <h2>Sign in to <span>VYTRON.</span></h2>
+            <p class="section-description">
+              Your next big idea starts here.
+            </p>
+
+            <form id="loginForm">
+              <label for="loginIdentity">Username or email</label>
+              <input
+                id="loginIdentity"
+                name="identity"
+                type="text"
+                placeholder="Enter your username or email"
+                autocomplete="username"
+                required
+              >
+
+              <div class="label-row">
+                <label for="loginPassword">Password</label>
+              </div>
+              <div class="password-wrap">
+                <input
+                  id="loginPassword"
+                  name="password"
+                  type="password"
+                  placeholder="Enter your password"
+                  autocomplete="current-password"
+                  required
+                >
+                <button class="password-toggle" type="button"
+                  data-toggle="loginPassword" aria-label="Show password">
+                  Show
+                </button>
+              </div>
+
+              <button class="primary-button" type="submit">
+                <span>Sign in</span>
+                <span class="button-arrow">↗</span>
+              </button>
+            </form>
+
+            <p class="switch-text">
+              New to VYTRON?
+              <button class="text-button" type="button" data-view="signup">
+                Create an account
+              </button>
+            </p>
+          </section>
+
+          <!-- Sign up -->
+          <section class="auth-view" id="signupView" hidden>
+            <p class="section-label">YOUR JOURNEY STARTS HERE</p>
+            <h2>Create your <span>account.</span></h2>
+            <p class="section-description">
+              Join VYTRON AI in just a few steps.
+            </p>
+
+            <form id="signupForm">
+              <label for="signupName">Full name</label>
+              <input
+                id="signupName"
+                name="name"
+                type="text"
+                placeholder="Your full name"
+                autocomplete="name"
+                minlength="2"
+                maxlength="80"
+                required
+              >
+
+              <label for="signupEmail">Gmail address</label>
+              <input
+                id="signupEmail"
+                name="email"
+                type="email"
+                placeholder="you@gmail.com"
+                autocomplete="email"
+                maxlength="254"
+                required
+              >
+
+              <label for="signupUsername">Username</label>
+              <input
+                id="signupUsername"
+                name="username"
+                type="text"
+                placeholder="Choose a username"
+                autocomplete="username"
+                minlength="3"
+                maxlength="24"
+                pattern="[A-Za-z0-9_]+"
+                title="Use letters, numbers, and underscores only."
+                required
+              >
+
+              <label for="signupPassword">Password</label>
+              <div class="password-wrap">
+                <input
+                  id="signupPassword"
+                  name="password"
+                  type="password"
+                  placeholder="At least 12 characters recommended"
+                  autocomplete="new-password"
+                  minlength="12"
+                  maxlength="128"
+                  required
+                >
+                <button class="password-toggle" type="button"
+                  data-toggle="signupPassword" aria-label="Show password">
+                  Show
+                </button>
+              </div>
+              <p class="field-hint">
+                Use at least 12 characters and avoid reused passwords.
+              </p>
+
+              <button class="primary-button" type="submit">
+                <span>Create account</span>
+                <span class="button-arrow">↗</span>
+              </button>
+            </form>
+
+            <p class="switch-text">
+              Already have an account?
+              <button class="text-button" type="button" data-view="login">
+                Sign in
+              </button>
+            </p>
+          </section>
+
+          <!-- Email verification -->
+          <section class="auth-view" id="verifyView" hidden>
+            <div class="verify-symbol">✉</div>
+            <p class="section-label">ONE LAST STEP</p>
+            <h2>Verify your <span>email.</span></h2>
+            <p class="section-description">
+              Enter the verification code sent to
+              <strong id="verificationEmail">your email</strong>.
+            </p>
+
+            <form id="verifyForm">
+              <label for="verificationCode">Verification code</label>
+              <input
+                id="verificationCode"
+                name="code"
+                type="text"
+                inputmode="numeric"
+                autocomplete="one-time-code"
+                placeholder="Enter your code"
+                pattern="[0-9]{6}"
+                maxlength="6"
+                required
+              >
+
+              <button class="primary-button" type="submit">
+                <span>Verify email</span>
+                <span class="button-arrow">↗</span>
+              </button>
+            </form>
+
+            <button id="resendCodeButton" class="secondary-button" type="button">
+              Resend verification code
+            </button>
+
+            <p class="switch-text">
+              Already verified?
+              <button class="text-button" type="button" data-view="login">
+                Return to sign in
+              </button>
+            </p>
+          </section>
+        </div>
+
+        <div id="authMessage" class="message" role="status"
+          aria-live="polite" hidden></div>
+
+        <div class="privacy-note">
+          <span>♧</span>
+          Your account security matters. Never share your password or verification code.
+        </div>
+      </div>
+
+      <footer class="mobile-footer">
+        © <span id="currentYear"></span> VYTRON AI
+      </footer>
+    </section>
+  </main>
+</body>
+</html>
