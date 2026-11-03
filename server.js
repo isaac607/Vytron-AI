@@ -12,7 +12,7 @@ import {
 import { GoogleGenAI } from "@google/genai";
 import Database from "better-sqlite3";
 import bcrypt from "bcryptjs";
-import nodemailer from "nodemailer";
+
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -24,21 +24,14 @@ const NODE_ENV = process.env.NODE_ENV || "development";
 const apiKey = process.env.GEMINI_API_KEY;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
-const emailTransporter =
-  process.env.BREVO_SMTP_HOST &&
-  process.env.BREVO_SMTP_USER &&
-  process.env.BREVO_SMTP_KEY &&
-  process.env.BREVO_SENDER_EMAIL
-    ? nodemailer.createTransport({
-        host: process.env.BREVO_SMTP_HOST,
-        port: Number(process.env.BREVO_SMTP_PORT || 587),
-        secure: Number(process.env.BREVO_SMTP_PORT || 587) === 465,
-        auth: {
-          user: process.env.BREVO_SMTP_USER,
-          pass: process.env.BREVO_SMTP_KEY
-        }
-      })
-    : null;
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
+const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL;
+const BREVO_SENDER_NAME =
+  process.env.BREVO_SENDER_NAME || "VYTRON AI";
+
+const emailConfigured = Boolean(
+  BREVO_API_KEY && BREVO_SENDER_EMAIL
+);
 
 const AI_MODEL =
   process.env.GEMINI_MODEL || "gemini-3.5-flash-lite";
@@ -514,84 +507,85 @@ function requireAuth(req, res) {
 }
 // ======================================================
 // ======================================================
-// EMAIL VERIFICATION — BREVO SMTP
+// EMAIL VERIFICATION — BREVO HTTPS API
 // ======================================================
 
 async function sendVerificationEmail(email, code) {
-  if (!emailTransporter) {
-    const error = new Error(
-      "Brevo SMTP is not configured. Check your .env file."
-    );
+  if (!emailConfigured) {
+    const error = new Error("Brevo API is not configured.");
     error.code = "EMAIL_NOT_CONFIGURED";
     throw error;
   }
 
-  const from = {
-    name: process.env.BREVO_SENDER_NAME || "VYTRON AI",
-    address: process.env.BREVO_SENDER_EMAIL
-  };
+  const textContent = [
+    "Welcome to VYTRON AI!",
+    "",
+    `Your verification code is: ${code}`,
+    "",
+    `This code expires in ${VERIFICATION_MINUTES} minutes.`,
+    "If you did not request this, you can ignore this email."
+  ].join("\n");
+
+  const htmlContent = `
+    <div style="background:#080b16;padding:40px 20px;font-family:Arial,sans-serif;color:#fff">
+      <div style="max-width:500px;margin:auto;background:#111827;padding:35px;border-radius:16px;text-align:center">
+        <h1 style="color:#8b5cf6">VYTRON AI</h1>
+        <p style="color:#cbd5e1">Welcome! Use the verification code below to activate your account.</p>
+        <div style="background:#1e293b;padding:20px;border-radius:12px;margin:25px 0">
+          <h2 style="letter-spacing:8px;color:#a78bfa;font-size:32px">${code}</h2>
+        </div>
+        <p style="color:#94a3b8">This code expires in ${VERIFICATION_MINUTES} minutes.</p>
+        <p style="color:#64748b;font-size:12px">If you did not request this, you can ignore this email.</p>
+      </div>
+    </div>
+  `;
 
   try {
-    const info = await emailTransporter.sendMail({
-      from,
-      to: email,
-      subject: "Your VYTRON AI verification code",
+    const response = await fetch(
+      "https://api.brevo.com/v3/smtp/email",
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "api-key": BREVO_API_KEY,
+          "content-type": "application/json"
+        },
+        body: JSON.stringify({
+          sender: {
+            name: BREVO_SENDER_NAME,
+            email: BREVO_SENDER_EMAIL
+          },
+          to: [{ email }],
+          subject: "Your VYTRON AI verification code",
+          textContent,
+          htmlContent
+        }),
+        signal: AbortSignal.timeout(15000)
+      }
+    );
 
-      text: [
-        "Welcome to VYTRON AI!",
-        "",
-        `Your verification code is: ${code}`,
-        "",
-        `This code expires in ${VERIFICATION_MINUTES} minutes.`,
-        "If you did not request this, you can ignore this email."
-      ].join("\n"),
+    const result = await response.json().catch(() => ({}));
 
-      html: `
-        <div style="
-          font-family:Arial,sans-serif;
-          background:#0b0d18;
-          color:#f5f5ff;
-          padding:32px;
-          border-radius:16px;
-          max-width:520px;
-          margin:auto;
-        ">
-          <h1 style="color:#b6a8ff;">VYTRON AI</h1>
+    if (!response.ok) {
+      const error = new Error(
+        result.message || "Brevo could not send the email."
+      );
+      error.code = "BREVO_API_ERROR";
+      error.statusCode = response.status;
+      throw error;
+    }
 
-          <p>
-            Welcome! Use the verification code below
-            to activate your account.
-          </p>
-
-          <div style="
-            font-size:32px;
-            font-weight:bold;
-            letter-spacing:8px;
-            padding:20px 0;
-            color:#c4baff;
-          ">${code}</div>
-
-          <p>
-            This code expires in ${VERIFICATION_MINUTES} minutes.
-          </p>
-
-          <p style="color:#9ca3b8;font-size:12px;">
-            If you did not request this, you can ignore this email.
-          </p>
-        </div>
-      `
+    console.log("Brevo email accepted:", {
+      recipient: email,
+      messageId: result.messageId
     });
 
-    console.log("Verification email accepted by Brevo:", {
-      messageId: info.messageId,
-      recipient: email
-    });
+    return result;
 
-    return info;
   } catch (error) {
-    console.error("Brevo SMTP email failed:", {
+    console.error("Brevo HTTPS email failed:", {
       code: error.code,
-      responseCode: error.responseCode,
+      statusCode: error.statusCode,
       message: error.message
     });
 
@@ -685,6 +679,7 @@ function getErrorMessage(error) {
 // SIGNUP
 // ======================================================
 
+
 async function handleSignup(req, res) {
   let data;
 
@@ -741,11 +736,11 @@ async function handleSignup(req, res) {
     );
   }
 
-  if (!emailTransporter) {
+  if (!emailConfigured) {
     return sendError(
       res,
       503,
-      "Email is not configured. Add RESEND_API_KEY to your .env file."
+      "Email is not configured. Check your Brevo API environment variables."
     );
   }
 
@@ -815,8 +810,6 @@ async function handleSignup(req, res) {
       message: "Account created. Check your Gmail inbox for your six-digit verification code."
     });
   } catch (error) {
-    db.prepare("DELETE FROM users WHERE id = ?").run(userId);
-
     console.error("Signup verification failed:", {
       code: error.code,
       statusCode: error.statusCode,
@@ -826,10 +819,11 @@ async function handleSignup(req, res) {
     return sendError(
       res,
       502,
-      "We couldn't send the verification email. Check the server terminal for the exact Resend error, then try again."
+      "Your account has been saved, but we couldn't send your verification email. Please use Resend Code to try again."
     );
   }
 }
+
 
 // ======================================================
 // VERIFY EMAIL
@@ -947,13 +941,13 @@ async function handleResendCode(req, res) {
     return sendError(res, 400, "Enter a valid Gmail address.");
   }
 
-  if (!emailTransporter) {
-    return sendError(
-      res,
-      503,
-      "Brevo SMTP is not configured. Check your .env file."
-    );
-  }
+  if (!emailConfigured) {
+  return sendError(
+    res,
+    503,
+    "Brevo email is not configured. Check your environment variables."
+  );
+}
 
   const user = db.prepare(`
     SELECT id, verified
@@ -1002,7 +996,7 @@ async function handleResendCode(req, res) {
     return sendError(
       res,
       502,
-      "We couldn't send a new code. Check the server terminal for the exact Resend error, then try again."
+      "We couldn't send a new code. Please try again shortly."
     );
   }
 }
@@ -1569,7 +1563,7 @@ async function handleAdminRequest(req, res, requestUrl) {
         activeSessions
       },
       aiConfigured: Boolean(ai),
-      emailConfigured: Boolean(emailTransporter)
+      emailConfigured: emailConfigured
     });
   }
 
@@ -1816,7 +1810,7 @@ const server = http.createServer(async (req, res) => {
         app: "VYTRON AI",
         version: "1.0.0",
         aiConfigured: Boolean(ai),
-        emailConfigured: Boolean(emailTransporter)
+        emailConfigured: emailConfigured
       });
     }
 
@@ -1964,7 +1958,7 @@ server.listen(PORT, HOST, () => {
   console.log(`Server: http://${HOST}:${PORT}`);
   console.log(`Environment: ${NODE_ENV}`);
   console.log(`Gemini: ${ai ? "Configured" : "Not configured"}`);
- console.log(`Email: ${emailTransporter ? "Configured" : "Not configured"}`);
+ console.log(`Email: ${emailConfigured ? "Configured" : "Not configured"}`);
   console.log(`Database: Connected`);
   console.log("========================================");
   console.log("");
