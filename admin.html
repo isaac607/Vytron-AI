@@ -12,6 +12,11 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="/admin.css">
+  <link rel="manifest" href="/admin-manifest.json">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="VYTRON Admin">
   <script src="/admin.js" defer></script>
 </head>
 
@@ -479,5 +484,13 @@
       </div>
     </div>
   </div>
+  <script>
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/service-worker.js")
+      .catch(error => console.error("Admin service worker registration failed:", error));
+  });
+}
+</script>
 </body>
 </html>
