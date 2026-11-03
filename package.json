@@ -1,10 +1,9 @@
 {
-  "name": "nexora",
+  "name": "vytron-ai",
   "version": "1.0.0",
-  "description": "",
-  "main": "script.js",
+  "description": "VYTRON AI",
+  "main": "server.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js"
   },
   "keywords": [],
@@ -16,6 +15,7 @@
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
     "nodemailer": "^10.3.1",
-    "resend": "^6.34.1"
+    "resend": "^6.34.1",
+    "pg": "^8.16.3"
   }
 }
