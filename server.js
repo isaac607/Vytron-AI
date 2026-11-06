@@ -76,12 +76,6 @@ function getLoginKey(req, identity) {
 
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 10, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000 });
-const LOGIN_WINDOW_MS = 15 * 60 * 1000;
-const MAX_LOGIN_ATTEMPTS = 8;
-function getLoginKey(req, identity) {
-  const ip = req.socket.remoteAddress || "unknown";
-  return sha256(`${ip}:${identity.toLowerCase()}`);
-}
 async function isLoginBlocked(key) {
   const { rows } = await pool.query("SELECT attempt_count, reset_at FROM login_attempts WHERE login_key = $1", [key]);
   const row = rows[0];
