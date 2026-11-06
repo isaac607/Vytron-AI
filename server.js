@@ -1034,7 +1034,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === "/api/auth/me" && req.method === "GET") {
-      const session = requireAuth(req, res);
+      const session = await requireAuth(req, res);
 
       if (!session) return;
 
@@ -1106,7 +1106,7 @@ if (pathname === "/" || pathname === "/index.html") {
     // --------------------------------------------------
 
     if (pathname === "/admin.html" || pathname === "/admin") {
-      const session = requireAuth(req, res);
+      const session = await requireAuth(req, res);
 
       if (!session) return;
 
