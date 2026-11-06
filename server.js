@@ -10,7 +10,8 @@ import {
 } from "node:crypto";
 
 import { GoogleGenAI } from "@google/genai";
-import Database from "better-sqlite3";
+import pg from "pg";
+const { Pool } = pg;
 import bcrypt from "bcryptjs";
 
 
@@ -72,162 +73,38 @@ function getLoginKey(req, identity) {
   return sha256(`${ip}:${identity.toLowerCase()}`);
 }
 
-function isLoginBlocked(key) {
-  const record = db.prepare(`
-    SELECT attempt_count, reset_at
-    FROM login_attempts
-    WHERE login_key = ?
-  `).get(key);
 
-  if (!record) return false;
-
-  if (Date.now() >= record.reset_at) {
-    db.prepare(`
-      DELETE FROM login_attempts
-      WHERE login_key = ?
-    `).run(key);
-
+if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required.");
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false }, max: 10, idleTimeoutMillis: 30000, connectionTimeoutMillis: 10000 });
+const LOGIN_WINDOW_MS = 15 * 60 * 1000;
+const MAX_LOGIN_ATTEMPTS = 8;
+function getLoginKey(req, identity) {
+  const ip = req.socket.remoteAddress || "unknown";
+  return sha256(`${ip}:${identity.toLowerCase()}`);
+}
+async function isLoginBlocked(key) {
+  const { rows } = await pool.query("SELECT attempt_count, reset_at FROM login_attempts WHERE login_key = $1", [key]);
+  const row = rows[0];
+  if (!row) return false;
+  if (Date.now() >= Number(row.reset_at)) {
+    await pool.query("DELETE FROM login_attempts WHERE login_key = $1", [key]);
     return false;
   }
-
-  return record.attempt_count >= MAX_LOGIN_ATTEMPTS;
+  return Number(row.attempt_count) >= MAX_LOGIN_ATTEMPTS;
 }
-
-function recordFailedLogin(key) {
+async function recordFailedLogin(key) {
   const now = Date.now();
-
-  const record = db.prepare(`
-    SELECT attempt_count, reset_at
-    FROM login_attempts
-    WHERE login_key = ?
-  `).get(key);
-
-  if (!record || now >= record.reset_at) {
-    db.prepare(`
-      INSERT INTO login_attempts (
-        login_key,
-        attempt_count,
-        reset_at
-      )
-      VALUES (?, 1, ?)
-      ON CONFLICT(login_key)
-      DO UPDATE SET
-        attempt_count = 1,
-        reset_at = excluded.reset_at
-    `).run(key, now + LOGIN_WINDOW_MS);
-
-    return;
-  }
-
-  db.prepare(`
-    UPDATE login_attempts
-    SET attempt_count = attempt_count + 1
-    WHERE login_key = ?
-  `).run(key);
+  await pool.query(`
+    INSERT INTO login_attempts(login_key,attempt_count,reset_at) VALUES($1,1,$2)
+    ON CONFLICT(login_key) DO UPDATE SET
+      attempt_count = CASE WHEN login_attempts.reset_at <= $3 THEN 1 ELSE login_attempts.attempt_count + 1 END,
+      reset_at = CASE WHEN login_attempts.reset_at <= $3 THEN EXCLUDED.reset_at ELSE login_attempts.reset_at END
+  `, [key, now + LOGIN_WINDOW_MS, now]);
+}
+async function clearLoginAttempts(key) {
+  await pool.query("DELETE FROM login_attempts WHERE login_key = $1", [key]);
 }
 
-function clearLoginAttempts(key) {
-  db.prepare(`
-    DELETE FROM login_attempts
-    WHERE login_key = ?
-  `).run(key);
-}
-
-const db = new Database(path.join(__dirname, "users.db"));
-
-db.pragma("journal_mode = WAL");
-db.pragma("foreign_keys = ON");
-
-// ======================================================
-// DATABASE
-// ======================================================
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    email TEXT NOT NULL UNIQUE,
-    username TEXT NOT NULL COLLATE NOCASE UNIQUE,
-    password_hash TEXT NOT NULL,
-    verified INTEGER NOT NULL DEFAULT 0,
-    verification_hash TEXT,
-    verification_expires_at TEXT,
-    verification_attempts INTEGER NOT NULL DEFAULT 0,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS sessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    token_hash TEXT NOT NULL UNIQUE,
-    user_id INTEGER,
-    username TEXT NOT NULL,
-    name TEXT NOT NULL,
-    email TEXT,
-    role TEXT NOT NULL DEFAULT 'user',
-    expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_sessions_expiry
-  ON sessions(expires_at);
-
-  CREATE INDEX IF NOT EXISTS idx_users_email
-  ON users(email);
-
-    CREATE TABLE IF NOT EXISTS login_attempts (
-    login_key TEXT PRIMARY KEY,
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    reset_at INTEGER NOT NULL
-  );
-`);
-
-// ======================================================
-// ADMIN DATABASE MIGRATIONS
-// ======================================================
-
-const existingUserColumns = db
-  .prepare("PRAGMA table_info(users)")
-  .all()
-  .map(column => column.name);
-
-if (!existingUserColumns.includes("role")) {
-  db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'");
-}
-
-if (!existingUserColumns.includes("status")) {
-  db.exec("ALTER TABLE users ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
-}
-
-if (!existingUserColumns.includes("updated_at")) {
-  db.exec("ALTER TABLE users ADD COLUMN updated_at TEXT");
-}
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS admin_audit_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    actor_username TEXT NOT NULL,
-    actor_role TEXT NOT NULL,
-    action TEXT NOT NULL,
-    target_username TEXT,
-    details TEXT,
-    ip_address TEXT,
-    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_admin_audit_created
-  ON admin_audit_logs(created_at);
-`);
-
-db.prepare(`
-  DELETE FROM sessions
-  WHERE expires_at <= ?
-`).run(new Date().toISOString());
-
-db.prepare(`
-  DELETE FROM login_attempts
-  WHERE reset_at <= ?
-`).run(Date.now());
 
 // ======================================================
 // MIME TYPES
@@ -407,105 +284,50 @@ function makeVerificationCode() {
 // SESSION MANAGEMENT
 // ======================================================
 
-function createSession(res, user) {
+
+async function createSession(res, user) {
   const token = makeSessionToken();
-
-  const expiresAt = new Date(
-    Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000
-  ).toISOString();
-
-  db.prepare(`
-    INSERT INTO sessions
-      (token_hash, user_id, username, name, email, role, expires_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    sha256(token),
-    user.id ?? null,
-    user.username,
-    user.name,
-    user.email || null,
-    user.role || "user",
-    expiresAt
-  );
-
-  res.setHeader(
-    "Set-Cookie",
-    cookieHeader(token, SESSION_DAYS * 24 * 60 * 60)
-  );
+  const expiresAt = new Date(Date.now() + SESSION_DAYS * 86400000);
+  await pool.query(`INSERT INTO sessions(token_hash,user_id,username,name,email,role,expires_at)
+    VALUES($1,$2,$3,$4,$5,$6,$7)`,
+    [sha256(token), user.id ?? null, user.username, user.name, user.email || "", user.role || "user", expiresAt]);
+  res.setHeader("Set-Cookie", cookieHeader(token, SESSION_DAYS * 86400));
 }
-
-function getCurrentSession(req) {
+async function getCurrentSession(req) {
   const token = getCookie(req, COOKIE_NAME);
   if (!token || token.length > 200) return null;
-
-  const session = db.prepare(`
-    SELECT id, user_id, username, name, email, role, expires_at
-    FROM sessions
-    WHERE token_hash = ?
-  `).get(sha256(token));
-
+  const found = await pool.query(`SELECT id,user_id,username,name,email,role,expires_at FROM sessions WHERE token_hash=$1`, [sha256(token)]);
+  const session = found.rows[0];
   if (!session) return null;
-
-  if (session.expires_at <= new Date().toISOString()) {
-    db.prepare("DELETE FROM sessions WHERE id = ?").run(session.id);
+  if (new Date(session.expires_at).getTime() <= Date.now()) {
+    await pool.query("DELETE FROM sessions WHERE id=$1", [session.id]);
     return null;
   }
-
   if (session.user_id !== null) {
-    const user = db.prepare(`
-      SELECT id, verified, role, status, name, email, username
-      FROM users
-      WHERE id = ?
-    `).get(session.user_id);
-
-    if (!user || user.verified !== 1 || user.status !== "active") {
-      db.prepare("DELETE FROM sessions WHERE id = ?").run(session.id);
+    const result = await pool.query("SELECT id,verified,role,status,name,email,username FROM users WHERE id=$1", [session.user_id]);
+    const user = result.rows[0];
+    if (!user || Number(user.verified) !== 1 || user.status !== "active") {
+      await pool.query("DELETE FROM sessions WHERE id=$1", [session.id]);
       return null;
     }
-
-    if (session.role !== user.role || session.username !== user.username) {
-      db.prepare(`
-        UPDATE sessions
-        SET role = ?, username = ?, name = ?, email = ?
-        WHERE id = ?
-      `).run(
-        user.role,
-        user.username,
-        user.name,
-        user.email,
-        session.id
-      );
-
-      session.role = user.role;
-      session.username = user.username;
-      session.name = user.name;
-      session.email = user.email;
+    if (session.role !== user.role || session.username !== user.username || session.name !== user.name || session.email !== user.email) {
+      await pool.query("UPDATE sessions SET role=$1,username=$2,name=$3,email=$4 WHERE id=$5",
+        [user.role,user.username,user.name,user.email,session.id]);
+      Object.assign(session,{role:user.role,username:user.username,name:user.name,email:user.email});
     }
   }
-
   return session;
 }
-
 function publicUser(session) {
-  return {
-    username: session.username,
-    name: session.name,
-    email: session.email,
-    role: session.role
-  };
+  return { username:session.username,name:session.name,email:session.email,role:session.role };
 }
-
-function requireAuth(req, res) {
-  const session = getCurrentSession(req);
-
-  if (!session) {
-    sendError(res, 401, "Please sign in to use VYTRON AI.");
-    return null;
-  }
-
+async function requireAuth(req,res) {
+  const session = await getCurrentSession(req);
+  if (!session) { sendError(res,401,"Please sign in to use VYTRON AI."); return null; }
   return session;
 }
-// ======================================================
+
+
 // ======================================================
 // EMAIL VERIFICATION — BREVO HTTPS API
 // ======================================================
@@ -680,147 +502,36 @@ function getErrorMessage(error) {
 // ======================================================
 
 
-async function handleSignup(req, res) {
+
+async function handleSignup(req,res) {
   let data;
-
+  try { data=await readRequestBody(req); }
+  catch(error){ return sendError(res,error.code==="BODY_TOO_LARGE"?413:400,error.code==="BODY_TOO_LARGE"?"Your request is too large.":"Invalid signup request."); }
+  const name=String(data.name||"").trim(), email=String(data.email||"").trim().toLowerCase();
+  const username=String(data.username||"").trim(), password=data.password;
+  if(name.length<2||name.length>80)return sendError(res,400,"Your name must be between 2 and 80 characters.");
+  if(!isValidGmail(email))return sendError(res,400,"Please use a valid Gmail address.");
+  if(!validUsername(username))return sendError(res,400,"Username must be 3–24 characters using letters, numbers, or underscores.");
+  if(username.toLowerCase()===MASTER_USERNAME.toLowerCase())return sendError(res,400,"That username is reserved.");
+  if(typeof password!=="string"||password.length<12||password.length>128)return sendError(res,400,"Your password must be between 12 and 128 characters.");
+  if(!emailConfigured)return sendError(res,503,"Email is not configured. Check your Brevo API environment variables.");
+  const existing=await pool.query("SELECT id FROM users WHERE LOWER(email)=$1 OR LOWER(username)=LOWER($2) LIMIT 1",[email,username]);
+  if(existing.rowCount)return sendError(res,409,"That email or username is already registered. Try signing in instead.");
+  const code=makeVerificationCode(), verificationHash=await bcrypt.hash(code,10), passwordHash=await bcrypt.hash(password,12);
+  const expiresAt=new Date(Date.now()+VERIFICATION_MINUTES*60000);
   try {
-    data = await readRequestBody(req);
-  } catch (error) {
-    return sendError(
-      res,
-      error.code === "BODY_TOO_LARGE" ? 413 : 400,
-      error.code === "BODY_TOO_LARGE"
-        ? "Your request is too large."
-        : "Invalid signup request."
-    );
-  }
-
-  const name = String(data.name || "").trim();
-  const email = String(data.email || "").trim().toLowerCase();
-  const username = String(data.username || "").trim();
-  const password = data.password;
-
-  if (name.length < 2 || name.length > 80) {
-    return sendError(
-      res,
-      400,
-      "Your name must be between 2 and 80 characters."
-    );
-  }
-
-  if (!isValidGmail(email)) {
-    return sendError(res, 400, "Please use a valid Gmail address.");
-  }
-
-  if (!validUsername(username)) {
-    return sendError(
-      res,
-      400,
-      "Username must be 3–24 characters using letters, numbers, or underscores."
-    );
-  }
-
-  if (username.toLowerCase() === MASTER_USERNAME.toLowerCase()) {
-    return sendError(res, 400, "That username is reserved.");
-  }
-
-  if (
-    typeof password !== "string" ||
-    password.length < 12 ||
-    password.length > 128
-  ) {
-    return sendError(
-      res,
-      400,
-      "Your password must be between 12 and 128 characters."
-    );
-  }
-
-  if (!emailConfigured) {
-    return sendError(
-      res,
-      503,
-      "Email is not configured. Check your Brevo API environment variables."
-    );
-  }
-
-  const existing = db.prepare(`
-    SELECT id
-    FROM users
-    WHERE email = ? OR username = ? COLLATE NOCASE
-  `).get(email, username);
-
-  if (existing) {
-    return sendError(
-      res,
-      409,
-      "That email or username is already registered. Try signing in instead."
-    );
-  }
-
-  const code = makeVerificationCode();
-  const verificationHash = await bcrypt.hash(code, 10);
-  const passwordHash = await bcrypt.hash(password, 12);
-
-  const expiresAt = new Date(
-    Date.now() + VERIFICATION_MINUTES * 60 * 1000
-  ).toISOString();
-
-  let userId;
-
-  try {
-    const result = db.prepare(`
-      INSERT INTO users (
-        name,
-        email,
-        username,
-        password_hash,
-        verified,
-        verification_hash,
-        verification_expires_at,
-        verification_attempts
-      )
-      VALUES (?, ?, ?, ?, 0, ?, ?, 0)
-    `).run(
-      name,
-      email,
-      username,
-      passwordHash,
-      verificationHash,
-      expiresAt
-    );
-
-    userId = Number(result.lastInsertRowid);
-  } catch (error) {
-    if (error.code?.startsWith("SQLITE_CONSTRAINT")) {
-      return sendError(
-        res,
-        409,
-        "That email or username is already in use."
-      );
-    }
-
+    await pool.query(`INSERT INTO users(name,email,username,password_hash,verified,verification_hash,verification_expires_at,verification_attempts)
+      VALUES($1,$2,$3,$4,0,$5,$6,0)`,[name,email,username,passwordHash,verificationHash,expiresAt]);
+  } catch(error) {
+    if(error.code==="23505")return sendError(res,409,"That email or username is already in use.");
     throw error;
   }
-
   try {
-    await sendVerificationEmail(email, code);
-
-    return sendJson(res, 201, {
-      message: "Account created. Check your Gmail inbox for your six-digit verification code."
-    });
-  } catch (error) {
-    console.error("Signup verification failed:", {
-      code: error.code,
-      statusCode: error.statusCode,
-      message: error.message
-    });
-
-    return sendError(
-      res,
-      502,
-      "Your account has been saved, but we couldn't send your verification email. Please use Resend Code to try again."
-    );
+    await sendVerificationEmail(email,code);
+    return sendJson(res,201,{message:"Account created. Check your Gmail inbox for your six-digit verification code."});
+  } catch(error) {
+    console.error("Signup verification failed:",{code:error.code,statusCode:error.statusCode,message:error.message});
+    return sendError(res,502,"Your account has been saved, but we couldn't send your verification email. Please use Resend Code to try again.");
   }
 }
 
@@ -829,361 +540,95 @@ async function handleSignup(req, res) {
 // VERIFY EMAIL
 // ======================================================
 
-async function handleVerify(req, res) {
-  let data;
 
-  try {
-    data = await readRequestBody(req);
-  } catch {
-    return sendError(res, 400, "Invalid verification request.");
+async function handleVerify(req,res) {
+  let data; try{data=await readRequestBody(req);}catch{return sendError(res,400,"Invalid verification request.");}
+  const email=String(data.email||"").trim().toLowerCase(), code=String(data.code||"").trim();
+  if(!isValidGmail(email)||!/^\d{6}$/.test(code))return sendError(res,400,"Enter your Gmail address and six-digit verification code.");
+  const result=await pool.query(`SELECT id,username,name,email,verification_hash,verification_expires_at,verification_attempts,verified FROM users WHERE LOWER(email)=$1`,[email]);
+  const user=result.rows[0];
+  if(!user)return sendError(res,400,"Invalid or expired verification code.");
+  if(Number(user.verified)===1)return sendJson(res,200,{message:"Your email is already verified. You can sign in."});
+  if(!user.verification_hash||!user.verification_expires_at||new Date(user.verification_expires_at).getTime()<=Date.now())return sendError(res,400,"Your verification code has expired. Request a new one.");
+  if(Number(user.verification_attempts)>=MAX_VERIFICATION_ATTEMPTS)return sendError(res,429,"Too many incorrect attempts. Request a new verification code.");
+  if(!await bcrypt.compare(code,user.verification_hash)){
+    await pool.query("UPDATE users SET verification_attempts=verification_attempts+1 WHERE id=$1",[user.id]);
+    return sendError(res,400,"That verification code is incorrect.");
   }
-
-  const email = String(data.email || "").trim().toLowerCase();
-  const code = String(data.code || "").trim();
-
-  if (!isValidGmail(email) || !/^\d{6}$/.test(code)) {
-    return sendError(
-      res,
-      400,
-      "Enter your Gmail address and six-digit verification code."
-    );
-  }
-
-  const user = db.prepare(`
-    SELECT
-      id,
-      username,
-      name,
-      email,
-      verification_hash,
-      verification_expires_at,
-      verification_attempts,
-      verified
-    FROM users
-    WHERE email = ?
-  `).get(email);
-
-  if (!user) {
-    return sendError(res, 400, "Invalid or expired verification code.");
-  }
-
-  if (user.verified === 1) {
-    return sendJson(res, 200, {
-      message: "Your email is already verified. You can sign in."
-    });
-  }
-
-  if (
-    !user.verification_hash ||
-    !user.verification_expires_at ||
-    user.verification_expires_at <= new Date().toISOString()
-  ) {
-    return sendError(
-      res,
-      400,
-      "Your verification code has expired. Request a new one."
-    );
-  }
-
-  if (user.verification_attempts >= MAX_VERIFICATION_ATTEMPTS) {
-    return sendError(
-      res,
-      429,
-      "Too many incorrect attempts. Request a new verification code."
-    );
-  }
-
-  const matches = await bcrypt.compare(
-    code,
-    user.verification_hash
-  );
-
-  if (!matches) {
-    db.prepare(`
-      UPDATE users
-      SET verification_attempts = verification_attempts + 1
-      WHERE id = ?
-    `).run(user.id);
-
-    return sendError(res, 400, "That verification code is incorrect.");
-  }
-
-  db.prepare(`
-    UPDATE users
-    SET verified = 1,
-        verification_hash = NULL,
-        verification_expires_at = NULL,
-        verification_attempts = 0
-    WHERE id = ?
-  `).run(user.id);
-
-  return sendJson(res, 200, {
-    message: "Email verified successfully. You can now sign in."
-  });
+  await pool.query("UPDATE users SET verified=1,verification_hash=NULL,verification_expires_at=NULL,verification_attempts=0,updated_at=NOW() WHERE id=$1",[user.id]);
+  return sendJson(res,200,{message:"Email verified successfully. You can now sign in."});
 }
+
 
 // ======================================================
 // RESEND VERIFICATION CODE — CORRECTED
 // ======================================================
 
-async function handleResendCode(req, res) {
-  let data;
 
-  try {
-    data = await readRequestBody(req);
-  } catch {
-    return sendError(res, 400, "Invalid request.");
-  }
-
-  const email = String(data.email || "").trim().toLowerCase();
-
-  if (!isValidGmail(email)) {
-    return sendError(res, 400, "Enter a valid Gmail address.");
-  }
-
-  if (!emailConfigured) {
-  return sendError(
-    res,
-    503,
-    "Brevo email is not configured. Check your environment variables."
-  );
+async function handleResendCode(req,res) {
+  let data;try{data=await readRequestBody(req);}catch{return sendError(res,400,"Invalid request.");}
+  const email=String(data.email||"").trim().toLowerCase();
+  if(!isValidGmail(email))return sendError(res,400,"Enter a valid Gmail address.");
+  if(!emailConfigured)return sendError(res,503,"Brevo email is not configured. Check your environment variables.");
+  const result=await pool.query("SELECT id,verified FROM users WHERE LOWER(email)=$1",[email]), user=result.rows[0];
+  if(!user)return sendError(res,404,"No account was found for that email.");
+  if(Number(user.verified)===1)return sendJson(res,200,{message:"This email is already verified. You can sign in."});
+  const code=makeVerificationCode(), hash=await bcrypt.hash(code,10), expiresAt=new Date(Date.now()+VERIFICATION_MINUTES*60000);
+  await pool.query("UPDATE users SET verification_hash=$1,verification_expires_at=$2,verification_attempts=0,updated_at=NOW() WHERE id=$3",[hash,expiresAt,user.id]);
+  try{await sendVerificationEmail(email,code);return sendJson(res,200,{message:"A new verification code has been sent to your inbox."});}
+  catch(error){console.error("Resend verification failed:",{code:error.code,statusCode:error.statusCode,message:error.message});return sendError(res,502,"We couldn't send a new code. Please try again shortly.");}
 }
 
-  const user = db.prepare(`
-    SELECT id, verified
-    FROM users
-    WHERE email = ?
-  `).get(email);
-
-  if (!user) {
-    return sendError(res, 404, "No account was found for that email.");
-  }
-
-  if (user.verified === 1) {
-    return sendJson(res, 200, {
-      message: "This email is already verified. You can sign in."
-    });
-  }
-
-  const code = makeVerificationCode();
-  const verificationHash = await bcrypt.hash(code, 10);
-
-  const expiresAt = new Date(
-    Date.now() + VERIFICATION_MINUTES * 60 * 1000
-  ).toISOString();
-
-  db.prepare(`
-    UPDATE users
-    SET verification_hash = ?,
-        verification_expires_at = ?,
-        verification_attempts = 0
-    WHERE id = ?
-  `).run(verificationHash, expiresAt, user.id);
-
-  try {
-    await sendVerificationEmail(email, code);
-
-    return sendJson(res, 200, {
-      message: "A new verification code has been sent to your inbox."
-    });
-  } catch (error) {
-    console.error("Resend verification failed:", {
-      code: error.code,
-      statusCode: error.statusCode,
-      message: error.message
-    });
-
-    return sendError(
-      res,
-      502,
-      "We couldn't send a new code. Please try again shortly."
-    );
-  }
-}
 
 // ======================================================
 // LOGIN
 // ======================================================
 
-async function handleLogin(req, res) {
-  let data;
 
-  try {
-    data = await readRequestBody(req);
-  } catch {
-    return sendError(res, 400, "Invalid login request.");
+async function handleLogin(req,res) {
+  let data;try{data=await readRequestBody(req);}catch{return sendError(res,400,"Invalid login request.");}
+  const identity=String(data.identity||data.username||data.email||"").trim(), password=data.password;
+  if(!identity||typeof password!=="string"||!password||password.length>128)return sendError(res,400,"Enter your username/email and password.");
+  const loginKey=getLoginKey(req,identity);
+  if(await isLoginBlocked(loginKey))return sendError(res,429,"Too many unsuccessful sign-in attempts. Please wait 15 minutes before trying again.");
+  if(MASTER_PASSWORD&&identity.toLowerCase()===MASTER_USERNAME.toLowerCase()){
+    const matches=await bcrypt.compare(password,await bcrypt.hash(MASTER_PASSWORD,12));
+    if(!matches){await recordFailedLogin(loginKey);return sendError(res,401,"Invalid username or password.");}
+    await clearLoginAttempts(loginKey);
+    await createSession(res,{id:null,username:MASTER_USERNAME,name:"Jonas Isaac",email:process.env.MASTER_EMAIL||"",role:"creator"});
+    return sendJson(res,200,{message:"Creator sign-in successful.",user:{username:MASTER_USERNAME,name:"Jonas Isaac",email:process.env.MASTER_EMAIL||null,role:"creator"}});
   }
-
-  const identity = String(
-    data.identity || data.username || data.email || ""
-  ).trim();
-
-  const password = data.password;
-
-  if (
-    !identity ||
-    typeof password !== "string" ||
-    password.length === 0 ||
-    password.length > 128
-  ) {
-    return sendError(
-      res,
-      400,
-      "Enter your username/email and password."
-    );
-  }
-
-    const loginKey = getLoginKey(req, identity);
-
-  if (isLoginBlocked(loginKey)) {
-    return sendError(
-      res,
-      429,
-      "Too many unsuccessful sign-in attempts. Please wait 15 minutes before trying again."
-    );
-  }
-
-  // Creator login
-  if (
-    MASTER_PASSWORD &&
-    identity.toLowerCase() === MASTER_USERNAME.toLowerCase()
-  ) {
-    const matches = await bcrypt.compare(
-      password,
-      await bcrypt.hash(MASTER_PASSWORD, 12)
-    );
-
-           if (!matches) {
-      recordFailedLogin(loginKey);
-      return sendError(res, 401, "Invalid username or password.");
-    }
-
-    clearLoginAttempts(loginKey);
-
-    createSession(res, {
-      id: null,
-      username: MASTER_USERNAME,
-      name: "Jonas Isaac",
-      email: process.env.MASTER_EMAIL || null,
-      role: "creator"
-    });
-
-    return sendJson(res, 200, {
-      message: "Creator sign-in successful.",
-      user: {
-        username: MASTER_USERNAME,
-        name: "Jonas Isaac",
-        email: process.env.MASTER_EMAIL || null,
-        role: "creator"
-      }
-    });
-  }
-
-  const normalizedIdentity = identity.toLowerCase();
-
-  const user = db.prepare(`
-    SELECT
-      id,
-      name,
-      email,
-      username,
-      password_hash,
-      verified,
-      role,
-      status
-    FROM users
-    WHERE email = ? OR username = ? COLLATE NOCASE
-  `).get(normalizedIdentity, identity);
-
-   if (!user) {
-    recordFailedLogin(loginKey);
-
-    return sendError(
-      res,
-      401,
-      "Invalid username/email or password."
-    );
-  }
-
-  const matches = await bcrypt.compare(
-    password,
-    user.password_hash
-  );
-
-    if (!matches) {
-    recordFailedLogin(loginKey);
-
-    return sendError(
-      res,
-      401,
-      "Invalid username/email or password."
-    );
-  }
-
-  if (user.status !== "active") {
-    return sendError(
-      res,
-      403,
-      "This account is currently suspended. Contact support for help."
-    );
-  }
-
-    if (user.verified !== 1) {
-    return sendJson(res, 403, {
-      code: "EMAIL_NOT_VERIFIED",
-      error: "Please verify your email before signing in.",
-      email: user.email
-    });
-  }
-
-  clearLoginAttempts(loginKey);
-
-  createSession(res, {
-    id: user.id,
-    username: user.username,
-    name: user.name,
-    email: user.email,
-    role: user.role || "user"
-  });
-
-  return sendJson(res, 200, {
-    message: "Sign-in successful.",
-    user: {
-      username: user.username,
-      name: user.name,
-      email: user.email,
-      role: user.role || "user"
-    }
-  });
+  const normalized=identity.toLowerCase();
+  const result=await pool.query(`SELECT id,name,email,username,password_hash,verified,role,status FROM users WHERE LOWER(email)=$1 OR LOWER(username)=$1 LIMIT 1`,[normalized]);
+  const user=result.rows[0];
+  if(!user){await recordFailedLogin(loginKey);return sendError(res,401,"Invalid username/email or password.");}
+  if(!await bcrypt.compare(password,user.password_hash)){await recordFailedLogin(loginKey);return sendError(res,401,"Invalid username/email or password.");}
+  if(user.status!=="active")return sendError(res,403,"This account is currently suspended. Contact support for help.");
+  if(Number(user.verified)!==1)return sendJson(res,403,{code:"EMAIL_NOT_VERIFIED",error:"Please verify your email before signing in.",email:user.email});
+  await clearLoginAttempts(loginKey);
+  await createSession(res,{id:user.id,username:user.username,name:user.name,email:user.email,role:user.role||"user"});
+  return sendJson(res,200,{message:"Sign-in successful.",user:{username:user.username,name:user.name,email:user.email,role:user.role||"user"}});
 }
+
 
 // ======================================================
 // LOGOUT
 // ======================================================
 
-function handleLogout(req, res) {
-  const token = getCookie(req, COOKIE_NAME);
 
-  if (token) {
-    db.prepare(`
-      DELETE FROM sessions
-      WHERE token_hash = ?
-    `).run(sha256(token));
-  }
-
-  return sendJson(
-    res,
-    200,
-    { message: "You have been signed out." },
-    { "Set-Cookie": clearSessionCookie() }
-  );
+async function handleLogout(req,res) {
+  const token=getCookie(req,COOKIE_NAME);
+  if(token)await pool.query("DELETE FROM sessions WHERE token_hash=$1",[sha256(token)]);
+  return sendJson(res,200,{message:"You have been signed out."},{"Set-Cookie":clearSessionCookie()});
 }
+
+
 // ======================================================
 // GEMINI CHAT
 // ======================================================
 
 async function handleChat(req, res) {
-  const session = requireAuth(req, res);
+  const session = await requireAuth(req, res);
 
   if (!session) return;
 
@@ -1411,12 +856,12 @@ const blockedFiles = new Set([
   "package-lock.json"
 ]);
 
+const privateBaseName = path.basename(filePath).toLowerCase();
+const isDatabaseArtifact = /\.(?:db|sqlite|sqlite3)(?:[-.].*)?$/i.test(privateBaseName);
 if (
-  blockedSegments.some(segment =>
-    segment.startsWith(".") ||
-    segment === "node_modules"
-  ) ||
-  blockedFiles.has(path.basename(filePath).toLowerCase())
+  blockedSegments.some(segment => segment.startsWith(".") || segment === "node_modules") ||
+  blockedFiles.has(privateBaseName) ||
+  isDatabaseArtifact
 ) {
   return sendError(res, 403, "Access denied.");
 }
@@ -1467,317 +912,73 @@ if (
 const ADMIN_ROLES = ["admin", "super_admin", "creator"];
 
 
-function writeAudit(
-  actor,
-  action,
-  targetUsername = null,
-  details = {},
-  req = null
-) {
-  db.prepare(`
-    INSERT INTO admin_audit_logs
-      (actor_username, actor_role, action, target_username, details, ip_address)
-    VALUES (?, ?, ?, ?, ?, ?)
-  `).run(
-    actor.username,
-    actor.role,
-    action,
-    targetUsername,
-    JSON.stringify(details),
-    req?.socket?.remoteAddress || null
-  );
+
+async function writeAudit(actor,action,targetUsername=null,details={},req=null,client=pool){
+  await client.query(`INSERT INTO admin_audit_logs(actor_username,actor_role,action,target_username,details,ip_address)
+    VALUES($1,$2,$3,$4,$5,$6)`,[actor.username,actor.role,action,targetUsername,JSON.stringify(details),req?.socket?.remoteAddress||null]);
 }
-
-
-function adminCanManage(actor, target) {
-  if (!target || target.role === "creator") {
-    return false;
-  }
-
-  if (actor.role === "creator") {
-    return true;
-  }
-
-  if (actor.role === "super_admin") {
-    return target.role === "user" || target.role === "admin";
-  }
-
-  if (actor.role === "admin") {
-    return target.role === "user";
-  }
-
+function adminCanManage(actor,target){
+  if(!target||target.role==="creator")return false;
+  if(actor.role==="creator")return true;
+  if(actor.role==="super_admin")return target.role==="user"||target.role==="admin";
+  if(actor.role==="admin")return target.role==="user";
   return false;
 }
-
-
-async function handleAdminRequest(req, res, requestUrl) {
-  const actor = requireAuth(req, res);
-
-  if (!actor) return;
-
-  if (!ADMIN_ROLES.includes(actor.role)) {
-    return sendError(
-      res,
-      403,
-      "You do not have permission to access administration."
-    );
+async function handleAdminRequest(req,res,requestUrl){
+  const actor=await requireAuth(req,res);if(!actor)return;
+  if(!ADMIN_ROLES.includes(actor.role))return sendError(res,403,"You do not have permission to access administration.");
+  const pathname=requestUrl.pathname;
+  if(req.method==="GET"&&pathname==="/api/admin/overview"){
+    const queries=await Promise.all([
+      pool.query("SELECT COUNT(*)::int AS count FROM users"),
+      pool.query("SELECT COUNT(*)::int AS count FROM users WHERE status='active'"),
+      pool.query("SELECT COUNT(*)::int AS count FROM users WHERE role='admin'"),
+      pool.query("SELECT COUNT(*)::int AS count FROM users WHERE role='super_admin'"),
+      pool.query("SELECT COUNT(*)::int AS count FROM sessions WHERE expires_at>NOW()")
+    ]);
+    return sendJson(res,200,{stats:{totalUsers:queries[0].rows[0].count,activeUsers:queries[1].rows[0].count,admins:queries[2].rows[0].count,superAdmins:queries[3].rows[0].count,activeSessions:queries[4].rows[0].count},aiConfigured:Boolean(ai),emailConfigured});
   }
-
-  const pathname = requestUrl.pathname;
-
-
-  // --------------------------------------------------
-  // ADMIN OVERVIEW
-  // --------------------------------------------------
-
-  if (
-    req.method === "GET" &&
-    pathname === "/api/admin/overview"
-  ) {
-    const totalUsers = db.prepare(
-      "SELECT COUNT(*) AS count FROM users"
-    ).get().count;
-
-    const activeUsers = db.prepare(
-      "SELECT COUNT(*) AS count FROM users WHERE status = 'active'"
-    ).get().count;
-
-    const admins = db.prepare(
-      "SELECT COUNT(*) AS count FROM users WHERE role = 'admin'"
-    ).get().count;
-
-    const superAdmins = db.prepare(
-      "SELECT COUNT(*) AS count FROM users WHERE role = 'super_admin'"
-    ).get().count;
-
-    const activeSessions = db.prepare(
-      "SELECT COUNT(*) AS count FROM sessions WHERE expires_at > ?"
-    ).get(new Date().toISOString()).count;
-
-    return sendJson(res, 200, {
-      stats: {
-        totalUsers,
-        activeUsers,
-        admins,
-        superAdmins,
-        activeSessions
-      },
-      aiConfigured: Boolean(ai),
-      emailConfigured: emailConfigured
-    });
+  if(req.method==="GET"&&pathname==="/api/admin/users"){
+    const q=String(requestUrl.searchParams.get("q")||"").trim().slice(0,100), like=`%${q}%`;
+    const result=await pool.query(`SELECT id,name,email,username,role,status,created_at AS "createdAt" FROM users
+      WHERE($1='' OR username ILIKE $2 OR email ILIKE $2 OR name ILIKE $2) ORDER BY id DESC LIMIT 200`,[q,like]);
+    return sendJson(res,200,{users:result.rows});
   }
-
-
-  // --------------------------------------------------
-  // USER MANAGEMENT
-  // --------------------------------------------------
-
-  if (
-    req.method === "GET" &&
-    pathname === "/api/admin/users"
-  ) {
-    const q = String(
-      requestUrl.searchParams.get("q") || ""
-    ).trim().slice(0, 100);
-
-    const like = `%${q}%`;
-
-    const users = db.prepare(`
-      SELECT
-        id,
-        name,
-        email,
-        username,
-        role,
-        status,
-        created_at AS createdAt
-      FROM users
-      WHERE (
-        ? = ''
-        OR username LIKE ?
-        OR email LIKE ?
-        OR name LIKE ?
-      )
-      ORDER BY id DESC
-      LIMIT 200
-    `).all(q, like, like, like);
-
-    return sendJson(res, 200, { users });
+  if(req.method==="GET"&&pathname==="/api/admin/audit"){
+    const result=await pool.query("SELECT id,actor_username,actor_role,action,target_username,details,ip_address,created_at FROM admin_audit_logs ORDER BY id DESC LIMIT 100");
+    return sendJson(res,200,{logs:result.rows.map(row=>({...row,details:(()=>{try{return JSON.parse(row.details||'{}');}catch{return {};}})()}))});
   }
-
-
-  // --------------------------------------------------
-  // AUDIT LOGS
-  // --------------------------------------------------
-
-  if (
-    req.method === "GET" &&
-    pathname === "/api/admin/audit"
-  ) {
-    const rows = db.prepare(`
-      SELECT
-        id,
-        actor_username,
-        actor_role,
-        action,
-        target_username,
-        details,
-        ip_address,
-        created_at
-      FROM admin_audit_logs
-      ORDER BY id DESC
-      LIMIT 100
-    `).all();
-
-    const logs = rows.map(row => ({
-      ...row,
-      details: (() => {
-        try {
-          return JSON.parse(row.details || "{}");
-        } catch {
-          return {};
-        }
-      })()
-    }));
-
-    return sendJson(res, 200, { logs });
-  }
-
-
-  // --------------------------------------------------
-  // CHANGE USER ROLE OR STATUS
-  // --------------------------------------------------
-
-  const match = pathname.match(
-    /^\/api\/admin\/users\/(\d+)\/(role|status)$/
-  );
-
-  if (match && req.method === "PATCH") {
-    let data;
-
-    try {
-      data = await readRequestBody(req);
-    } catch (error) {
-      return sendError(
-        res,
-        error.code === "BODY_TOO_LARGE" ? 413 : 400,
-        "Invalid administration request."
-      );
-    }
-
-    const target = db.prepare(`
-      SELECT id, username, role, status
-      FROM users
-      WHERE id = ?
-    `).get(Number(match[1]));
-
-    if (!target) {
-      return sendError(res, 404, "Account not found.");
-    }
-
-    if (!adminCanManage(actor, target)) {
-      return sendError(
-        res,
-        403,
-        "You cannot manage this account."
-      );
-    }
-
-
-    // ------------------------------------------------
-    // UPDATE ACCOUNT STATUS
-    // ------------------------------------------------
-
-    if (match[2] === "status") {
-      if (!["active", "suspended"].includes(data.status)) {
-        return sendError(res, 400, "Invalid account status.");
+  const match=pathname.match(/^\/api\/admin\/users\/(\d+)\/(role|status)$/);
+  if(match&&req.method==="PATCH"){
+    let data;try{data=await readRequestBody(req);}catch(error){return sendError(res,error.code==="BODY_TOO_LARGE"?413:400,"Invalid administration request.");}
+    const found=await pool.query("SELECT id,username,role,status FROM users WHERE id=$1",[match[1]]),target=found.rows[0];
+    if(!target)return sendError(res,404,"Account not found.");
+    if(!adminCanManage(actor,target))return sendError(res,403,"You cannot manage this account.");
+    const client=await pool.connect();
+    try{
+      await client.query("BEGIN");
+      if(match[2]==="status"){
+        if(!["active","suspended"].includes(data.status)){await client.query("ROLLBACK");return sendError(res,400,"Invalid account status.");}
+        await client.query("UPDATE users SET status=$1,updated_at=NOW() WHERE id=$2",[data.status,target.id]);
+        if(data.status==="suspended")await client.query("DELETE FROM sessions WHERE user_id=$1",[target.id]);
+        await writeAudit(actor,data.status==="suspended"?"user.suspended":"user.restored",target.username,{previousStatus:target.status,status:data.status},req,client);
+        await client.query("COMMIT");
+        return sendJson(res,200,{message:"Account status updated.",status:data.status});
       }
-
-      db.prepare(`
-        UPDATE users
-        SET status = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `).run(data.status, target.id);
-
-      if (data.status === "suspended") {
-        db.prepare(
-          "DELETE FROM sessions WHERE user_id = ?"
-        ).run(target.id);
-      }
-
-      writeAudit(
-        actor,
-        data.status === "suspended"
-          ? "user.suspended"
-          : "user.restored",
-        target.username,
-        {
-          previousStatus: target.status,
-          status: data.status
-        },
-        req
-      );
-
-      return sendJson(res, 200, {
-        message: "Account status updated.",
-        status: data.status
-      });
-    }
-
-
-    // ------------------------------------------------
-    // UPDATE ACCOUNT ROLE
-    // ------------------------------------------------
-
-    const allowedRoles = actor.role === "creator"
-      ? ["user", "admin", "super_admin"]
-      : actor.role === "super_admin"
-        ? ["user", "admin"]
-        : [];
-
-    if (!allowedRoles.includes(data.role)) {
-      return sendError(
-        res,
-        403,
-        "You cannot assign that role."
-      );
-    }
-
-    db.prepare(`
-      UPDATE users
-      SET role = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE id = ?
-    `).run(data.role, target.id);
-
-    db.prepare(`
-      UPDATE sessions
-      SET role = ?
-      WHERE user_id = ?
-    `).run(data.role, target.id);
-
-    writeAudit(
-      actor,
-      "user.role_changed",
-      target.username,
-      {
-        previousRole: target.role,
-        role: data.role
-      },
-      req
-    );
-
-    return sendJson(res, 200, {
-      message: "Account role updated.",
-      role: data.role
-    });
+      const roles=actor.role==="creator"?["user","admin","super_admin"]:actor.role==="super_admin"?["user","admin"]:[];
+      if(!roles.includes(data.role)){await client.query("ROLLBACK");return sendError(res,403,"You cannot assign that role.");}
+      await client.query("UPDATE users SET role=$1,updated_at=NOW() WHERE id=$2",[data.role,target.id]);
+      await client.query("UPDATE sessions SET role=$1 WHERE user_id=$2",[data.role,target.id]);
+      await writeAudit(actor,"user.role_changed",target.username,{previousRole:target.role,role:data.role},req,client);
+      await client.query("COMMIT");
+      return sendJson(res,200,{message:"Account role updated.",role:data.role});
+    }catch(error){await client.query("ROLLBACK").catch(()=>{});throw error;}
+    finally{client.release();}
   }
-
-  return sendError(
-    res,
-    404,
-    "Administration endpoint not found."
-  );
+  return sendError(res,404,"Administration endpoint not found.");
 }
+
+
 // ======================================================
 // HTTP SERVER & ROUTING
 // ======================================================
@@ -1885,7 +1086,7 @@ const server = http.createServer(async (req, res) => {
 // --------------------------------------------------
 
 if (pathname === "/" || pathname === "/index.html") {
-  const session = getCurrentSession(req);
+  const session = await getCurrentSession(req);
 
   console.log("DASHBOARD CHECK:", {
     pathname,
@@ -1946,49 +1147,47 @@ if (pathname === "/" || pathname === "/index.html") {
 });
 
 
-// ======================================================
-// SERVER STARTUP
-// ======================================================
 
-server.listen(PORT, HOST, () => {
-  console.log("");
-  console.log("========================================");
-  console.log("          VYTRON AI SERVER");
-  console.log("========================================");
-  console.log(`Server: http://${HOST}:${PORT}`);
-  console.log(`Environment: ${NODE_ENV}`);
-  console.log(`Gemini: ${ai ? "Configured" : "Not configured"}`);
- console.log(`Email: ${emailConfigured ? "Configured" : "Not configured"}`);
-  console.log(`Database: Connected`);
-  console.log("========================================");
-  console.log("");
+async function startServer(){
+  await pool.query("SELECT 1");
+  await pool.query("DELETE FROM sessions WHERE expires_at <= NOW()");
+  await pool.query("DELETE FROM login_attempts WHERE reset_at <= $1",[Date.now()]);
+  server.listen(PORT,HOST,()=>{
+    console.log("\\n========================================");
+    console.log("          VYTRON AI SERVER");
+    console.log("========================================");
+    console.log(`Server: http://${HOST}:${PORT}`);
+    console.log(`Environment: ${NODE_ENV}`);
+    console.log(`Gemini: ${ai?"Configured":"Not configured"}`);
+    console.log(`Email: ${emailConfigured?"Configured":"Not configured"}`);
+    console.log("Database: PostgreSQL connected");
+    console.log("========================================\\n");
+  });
+}
+startServer().catch(async error=>{
+  console.error("VYTRON startup failed: PostgreSQL is unavailable.",error);
+  await pool.end().catch(()=>{});
+  process.exit(1);
 });
 
 
-// ======================================================
-// GRACEFUL SHUTDOWN
-// ======================================================
 
-function shutdown(signal) {
-  console.log(`\n${signal} received. Shutting down VYTRON AI...`);
-
-  server.close(() => {
-    try {
-      db.close();
-      console.log("Database connection closed.");
-    } catch (error) {
-      console.error("Database shutdown error:", error.message);
-    }
-
+let isShuttingDown=false;
+async function shutdown(signal){
+  if(isShuttingDown)return;
+  isShuttingDown=true;
+  console.log(`\\n${signal} received. Shutting down VYTRON AI...`);
+  const force=setTimeout(()=>{console.error("Shutdown timed out. Forcing exit.");process.exit(1);},10000);
+  force.unref();
+  server.close(async()=>{
+    try{await pool.end();console.log("PostgreSQL pool closed.");}
+    catch(error){console.error("Database shutdown error:",error.message);}
+    clearTimeout(force);
     console.log("VYTRON AI server stopped.");
     process.exit(0);
   });
-
-  setTimeout(() => {
-    console.error("Shutdown timed out. Forcing exit.");
-    process.exit(1);
-  }, 10000).unref();
 }
+
 
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
