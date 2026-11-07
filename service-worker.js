@@ -1,9 +1,9 @@
-
-const CACHE_NAME = "vytron-ai-v8";
+const CACHE_NAME = "vytron-ai-v11";
 
 const APP_FILES = [
   "/",
   "/index.html",
+  "/auth.html",
   "/style.css",
   "/script.js",
   "/manifest.json",
@@ -41,7 +41,6 @@ self.addEventListener("fetch", event => {
 
   const url = new URL(request.url);
 
-  // Do not cache API requests or external services.
   if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) {
     return;
   }
