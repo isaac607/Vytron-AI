@@ -3,7 +3,7 @@
   "name": "Vytron AI",
   "short_name": "Vytron AI",
   "description": "Vytron AI personal workspace.",
-  "start_url": "/?source=vytron-admin-app",
+  "start_url": "/auth.html?source=vytron-admin-app",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
@@ -11,12 +11,12 @@
   "theme_color": "#090b14",
   "icons": [
     {
-      "src": "/icons/icon-square-192.svg",
+      "src": "/icons/icon-square-192.svg?v=5",
       "sizes": "any",
       "type": "image/svg+xml"
     },
     {
-      "src": "/icons/icon-square-512.svg",
+      "src": "/icons/icon-square-512.svg?v=5",
       "sizes": "any",
       "type": "image/svg+xml"
     }
