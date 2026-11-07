@@ -3,7 +3,7 @@
   "name": "VYTRON AI",
   "short_name": "VYTRON",
   "description": "Your personal AI workspace. Think clearly. Create boldly.",
-  "start_url": "/?v=3",
+  "start_url": "/auth.html?source=vytron-app",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
@@ -11,13 +11,13 @@
   "theme_color": "#080b12",
   "icons": [
     {
-      "src": "/icons/icon-square-192.svg",
+      "src": "/icons/icon-square-192.svg?v=5",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-square-512.svg",
+      "src": "/icons/icon-square-512.svg?v=5",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"
