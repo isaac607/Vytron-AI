@@ -1,5 +1,5 @@
 
-const CACHE_NAME = "vytron-ai-v7";
+const CACHE_NAME = "vytron-ai-v8";
 
 const APP_FILES = [
   "/",
