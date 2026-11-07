@@ -1,9 +1,11 @@
 
-const CACHE_NAME = "vytron-ai-v8";
+const CACHE_NAME = "vytron-ai-v9";
 
 const APP_FILES = [
   "/",
   "/index.html",
+  "/auth.html",
+  "/admin.html",
   "/style.css",
   "/script.js",
   "/manifest.json",
