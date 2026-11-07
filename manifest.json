@@ -1,10 +1,9 @@
-
 {
-  "id": "/vytron-ai-v2",
+  "id": "/vytron-ai-v3",
   "name": "VYTRON AI",
   "short_name": "VYTRON",
   "description": "Your personal AI workspace. Think clearly. Create boldly.",
-  "start_url": "/?v=2",
+  "start_url": "/?v=3",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
@@ -12,15 +11,15 @@
   "theme_color": "#080b12",
   "icons": [
     {
-      "src": "/icons/icon-192.png",
-      "sizes": "198x200",
-      "type": "image/png",
+      "src": "/icons/icon-square-192.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "/icons/icon-512.png",
-      "sizes": "529x512",
-      "type": "image/png",
+      "src": "/icons/icon-square-512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
       "purpose": "any"
     }
   ]
