@@ -3,7 +3,7 @@
   "name": "VYTRON AI Admin",
   "short_name": "VYTRON Admin",
   "description": "VYTRON AI administrative command center.",
-  "start_url": "/admin.html",
+  "start_url": "/?source=vytron-admin-app",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
