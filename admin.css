@@ -101,7 +101,7 @@ button:disabled {
   padding: 27px 17px;
   display: flex;
   flex-direction: column;
-  position: fixed;
+  position: absolute;
   inset: 10px auto 10px 10px;
   z-index: 20;
   transition: transform .25s ease;
