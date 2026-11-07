@@ -1,6 +1,5 @@
-
 {
-  "id": "/admin-app",
+  "id": "/admin-app-v2",
   "name": "VYTRON AI Admin",
   "short_name": "VYTRON Admin",
   "description": "VYTRON AI administrative command center.",
@@ -12,14 +11,14 @@
   "theme_color": "#090b14",
   "icons": [
     {
-      "src": "/icons/icon-192.png",
-      "sizes": "198x200",
-      "type": "image/png"
+      "src": "/icons/icon-square-192.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
     },
     {
-      "src": "/icons/icon-512.png",
-      "sizes": "529x512",
-      "type": "image/png"
+      "src": "/icons/icon-square-512.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
     }
   ]
 }
