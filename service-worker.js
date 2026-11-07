@@ -1,12 +1,15 @@
 
-const CACHE_NAME = "vytron-ai-v1";
+const CACHE_NAME = "vytron-ai-v2";
 
 const APP_FILES = [
   "/",
   "/index.html",
   "/style.css",
   "/script.js",
-  "/manifest.json"
+  "/manifest.json",
+  "/admin-manifest.json",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png"
 ];
 
 self.addEventListener("install", event => {
