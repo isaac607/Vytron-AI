@@ -1,8 +1,8 @@
 {
   "id": "/admin-app",
-  "name": "VYTRON AI Admin",
-  "short_name": "VYTRON Admin",
-  "description": "VYTRON AI administrative command center.",
+  "name": "Vytron AI",
+  "short_name": "Vytron AI",
+  "description": "Vytron AI personal workspace.",
   "start_url": "/?source=vytron-admin-app",
   "scope": "/",
   "display": "standalone",
